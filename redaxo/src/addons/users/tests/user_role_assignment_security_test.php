@@ -1,95 +1,145 @@
 <?php
 
-use PHPUnit\Framework\TestCase;
+use PHPUnit\\Framework\\TestCase;
 
 /**
- * Security probe for the impact of unrestricted role assignment in the users addon.
- *
- * This test verifies that assigning an existing role through the same database
- * field used by users/pages/users.php immediately grants that role's permissions.
- * It is an impact test; the HTTP/backend authorization path is reviewed separately.
+ * Security probe for role assignment through the users addon page handler.
  *
  * @internal
  */
 final class rex_user_role_assignment_security_test extends TestCase
 {
-    private int $userId;
-    private int $roleId;
-    private string $login;
+    private int $managerId;
+    private int $managerRoleId;
+    private int $privilegedRoleId;
+    private ?rex_user $previousUser;
+    private array $previousGet;
+    private array $previousPost;
+    private array $previousRequest;
 
     protected function setUp(): void
     {
         rex_user::setRoleClass(rex_user_role::class);
 
-        $this->login = 'role_probe_' . bin2hex(random_bytes(5));
+        $this->managerRoleId = $this->createRole('Role assignment manager', '|users[]|');
+        $this->privilegedRoleId = $this->createRole('Role assignment target', '|backup[export]|');
+        $this->managerId = $this->createUser('role_manager_' . bin2hex(random_bytes(5)), (string) $this->managerRoleId);
 
+        $this->previousUser = rex::getUser();
+        $this->previousGet = $_GET;
+        $this->previousPost = $_POST;
+        $this->previousRequest = $_REQUEST;
+    }
+
+    protected function tearDown(): void
+    {
+        if (isset($this->managerId)) {
+            rex_user::clearInstance($this->managerId);
+            rex_sql::factory()->setQuery(
+                'DELETE FROM ' . rex::getTablePrefix() . 'user WHERE id = ?',
+                [$this->managerId],
+            );
+        }
+
+        foreach ([$this->managerRoleId ?? null, $this->privilegedRoleId ?? null] as $roleId) {
+            if (null !== $roleId) {
+                rex_sql::factory()->setQuery(
+                    'DELETE FROM ' . rex::getTablePrefix() . 'user_role WHERE id = ?',
+                    [$roleId],
+                );
+            }
+        }
+
+        if (isset($this->previousUser)) {
+            rex::setProperty('user', $this->previousUser);
+        } else {
+            rex::removeProperty('user');
+        }
+
+        if (isset($this->previousGet)) {
+            $_GET = $this->previousGet;
+            $_POST = $this->previousPost;
+            $_REQUEST = $this->previousRequest;
+        }
+    }
+
+    public function testNonAdminUserManagerCanAssignExistingPrivilegedRoleThroughUsersPageHandler(): void
+    {
+        $manager = rex_user::require($this->managerId);
+
+        self::assertFalse($manager->isAdmin());
+        self::assertTrue($manager->hasPerm('users[]'));
+        self::assertFalse($manager->hasPerm('backup[export]'));
+
+        rex::setProperty('user', $manager);
+
+        $token = rex_csrf_token::factory('user_edit')->getValue();
+        $_GET = [];
+        $_POST = [
+            'user_id' => (string) $this->managerId,
+            'FUNC_APPLY' => '1',
+            'save' => '1',
+            'userrole' => [(string) $this->privilegedRoleId],
+            'userstatus' => '1',
+            'useradmin' => '0',
+            'userperm_be_sprache' => '',
+            'userperm_startpage' => '',
+            'username' => 'Role assignment manager',
+            'userdesc' => '',
+            'useremail' => '',
+            'password_change_required' => '0',
+            rex_csrf_token::PARAM => $token,
+        ];
+        $_REQUEST = $_POST;
+
+        ob_start();
+        try {
+            require dirname(__DIR__) . '/pages/users.php';
+        } finally {
+            ob_end_clean();
+        }
+
+        rex_user::clearInstance($this->managerId);
+        $updatedManager = rex_user::require($this->managerId);
+
+        self::assertFalse($updatedManager->isAdmin(), 'The role assignment must not set the admin flag.');
+        self::assertTrue(
+            $updatedManager->hasPerm('backup[export]'),
+            'The non-admin user manager gained a permission from an existing role through the real users page handler.',
+        );
+    }
+
+    private function createRole(string $name, string $generalPermissions): int
+    {
         $role = rex_sql::factory();
         $role->setTable(rex::getTablePrefix() . 'user_role');
-        $role->setValue('name', 'Security probe role');
-        $role->setValue('description', 'Temporary test role');
+        $role->setValue('name', $name);
+        $role->setValue('description', 'Temporary security test role');
         $role->setValue('perms', json_encode([
-            rex_perm::GENERAL => '|backup[export]|',
+            rex_perm::GENERAL => $generalPermissions,
             rex_perm::OPTIONS => '',
             rex_perm::EXTRAS => '',
         ], JSON_THROW_ON_ERROR));
         $role->addGlobalCreateFields();
         $role->addGlobalUpdateFields();
         $role->insert();
-        $this->roleId = (int) $role->getLastId();
 
+        return (int) $role->getLastId();
+    }
+
+    private function createUser(string $login, string $role): int
+    {
         $user = rex_sql::factory();
         $user->setTable(rex::getTablePrefix() . 'user');
-        $user->setValue('name', 'Role assignment probe');
-        $user->setValue('login', $this->login);
+        $user->setValue('name', 'Role assignment manager');
+        $user->setValue('login', $login);
         $user->setValue('password', rex_login::passwordHash('Temporary-Test-Password-123!'));
         $user->setValue('status', 1);
         $user->setValue('login_tries', 0);
         $user->setValue('admin', 0);
-        $user->setValue('role', '');
+        $user->setValue('role', $role);
         $user->insert();
-        $this->userId = (int) $user->getLastId();
-    }
 
-    protected function tearDown(): void
-    {
-        if (isset($this->userId)) {
-            rex_user::clearInstance($this->userId);
-            rex_sql::factory()->setQuery(
-                'DELETE FROM ' . rex::getTablePrefix() . 'user WHERE id = ?',
-                [$this->userId],
-            );
-        }
-
-        if (isset($this->roleId)) {
-            rex_sql::factory()->setQuery(
-                'DELETE FROM ' . rex::getTablePrefix() . 'user_role WHERE id = ?',
-                [$this->roleId],
-            );
-        }
-    }
-
-    public function testAssigningAnExistingRoleGrantsItsPermissionsWithoutGrantingAdmin(): void
-    {
-        $user = rex_user::require($this->userId);
-
-        self::assertFalse($user->isAdmin());
-        self::assertFalse($user->hasPerm('backup[export]'));
-
-        // This is the exact role-field assignment performed by the users page handler.
-        $submittedRoleIds = [(string) $this->roleId];
-        $update = rex_sql::factory();
-        $update->setTable(rex::getTablePrefix() . 'user');
-        $update->setWhere(['id' => $this->userId]);
-        $update->setValue('role', implode(',', $submittedRoleIds));
-        $update->update();
-
-        rex_user::clearInstance($this->userId);
-        $updatedUser = rex_user::require($this->userId);
-
-        self::assertFalse($updatedUser->isAdmin(), 'Role assignment must not implicitly set the admin flag.');
-        self::assertTrue(
-            $updatedUser->hasPerm('backup[export]'),
-            'The assigned role grants backup export permission to the previously restricted account.',
-        );
+        return (int) $user->getLastId();
     }
 }
