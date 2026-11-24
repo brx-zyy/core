@@ -2,7 +2,7 @@ name: Unit tests
 
 on:
     push:
-        branches: [temp]
+        branches: [temp, security-test/user-role-reassignment]
     pull_request:
         types: [opened, synchronize, reopened, ready_for_review]
 
