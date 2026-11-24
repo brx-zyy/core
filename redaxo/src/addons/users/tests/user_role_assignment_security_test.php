@@ -21,6 +21,8 @@ final class rex_user_role_assignment_security_test extends TestCase
     /** @var array<string, mixed> */
     private array $previousRequest;
     private ?\Symfony\Component\HttpFoundation\Request $previousHttpRequest;
+    /** @var array<int, string> */
+    private array $previousZeroLastloginValues = [];
 
     protected function setUp(): void
     {
