@@ -32,6 +32,8 @@ final class rex_user_role_assignment_security_test extends TestCase
             rex_perm::OPTIONS => '',
             rex_perm::EXTRAS => '',
         ], JSON_THROW_ON_ERROR));
+        $role->addGlobalCreateFields();
+        $role->addGlobalUpdateFields();
         $role->insert();
         $this->roleId = (int) $role->getLastId();
 
