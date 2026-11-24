@@ -13,9 +13,13 @@ final class rex_user_role_assignment_security_test extends TestCase
     private int $managerRoleId;
     private int $privilegedRoleId;
     private ?rex_user $previousUser;
+    /** @var array<string, mixed> */
     private array $previousGet;
+    /** @var array<string, mixed> */
     private array $previousPost;
+    /** @var array<string, mixed> */
     private array $previousRequest;
+    private ?\\Symfony\\Component\\HttpFoundation\\Request $previousHttpRequest;
 
     protected function setUp(): void
     {
@@ -23,6 +27,7 @@ final class rex_user_role_assignment_security_test extends TestCase
         $this->previousGet = $_GET;
         $this->previousPost = $_POST;
         $this->previousRequest = $_REQUEST;
+        $this->previousHttpRequest = rex::getProperty('request');
 
         rex_user::setRoleClass(rex_user_role::class);
 
@@ -50,6 +55,12 @@ final class rex_user_role_assignment_security_test extends TestCase
             }
         }
 
+        if (null !== $this->previousHttpRequest) {
+            rex::setProperty('request', $this->previousHttpRequest);
+        } else {
+            rex::removeProperty('request');
+        }
+
         if (isset($this->previousUser)) {
             rex::setProperty('user', $this->previousUser);
         } else {
@@ -73,7 +84,6 @@ final class rex_user_role_assignment_security_test extends TestCase
 
         rex::setProperty('user', $manager);
 
-        $token = rex_csrf_token::factory('user_edit')->getValue();
         $_GET = [];
         $_POST = [
             'user_id' => (string) $this->managerId,
@@ -91,6 +101,10 @@ final class rex_user_role_assignment_security_test extends TestCase
             rex_csrf_token::PARAM => $token,
         ];
         $_REQUEST = $_POST;
+        rex::setProperty('request', \\Symfony\\Component\\HttpFoundation\\Request::create('http://localhost/redaxo/index.php', 'POST', $_POST));
+        $token = rex_csrf_token::factory('user_edit')->getValue();
+        $_POST[rex_csrf_token::PARAM] = $token;
+        $_REQUEST[rex_csrf_token::PARAM] = $token;
 
         self::assertTrue(
             rex_csrf_token::factory('user_edit')->isValid(),
