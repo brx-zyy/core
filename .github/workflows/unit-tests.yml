@@ -81,3 +81,5 @@ jobs:
 
             -   name: Run phpunit
                 run: vendor/bin/phpunit --colors=always
+
+# Fresh push trigger for the isolated user-role authorization probe.
