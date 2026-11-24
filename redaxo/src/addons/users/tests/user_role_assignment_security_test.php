@@ -13,6 +13,7 @@ final class rex_user_role_assignment_security_test extends TestCase
     private int $managerRoleId;
     private int $privilegedRoleId;
     private ?rex_user $previousUser;
+    private ?rex_backend_login $previousLogin;
     /** @var array<string, mixed> */
     private array $previousGet;
     /** @var array<string, mixed> */
@@ -24,6 +25,7 @@ final class rex_user_role_assignment_security_test extends TestCase
     protected function setUp(): void
     {
         $this->previousUser = rex::getUser();
+        $this->previousLogin = rex::getProperty('login');
         $this->previousGet = $_GET;
         $this->previousPost = $_POST;
         $this->previousRequest = $_REQUEST;
@@ -61,6 +63,12 @@ final class rex_user_role_assignment_security_test extends TestCase
             rex::removeProperty('request');
         }
 
+        if (isset($this->previousLogin)) {
+            rex::setProperty('login', $this->previousLogin);
+        } else {
+            rex::removeProperty('login');
+        }
+
         if (isset($this->previousUser)) {
             rex::setProperty('user', $this->previousUser);
         } else {
@@ -83,6 +91,8 @@ final class rex_user_role_assignment_security_test extends TestCase
         self::assertFalse($manager->hasPerm('backup[export]'));
 
         rex::setProperty('user', $manager);
+        // The backend page handler reads the active backend login object (e.g. passkey state).
+        rex::setProperty('login', new rex_backend_login());
 
         $_GET = [];
         $_POST = [
