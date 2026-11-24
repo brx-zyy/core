@@ -33,6 +33,24 @@ final class rex_user_role_assignment_security_test extends TestCase
 
         rex_user::setRoleClass(rex_user_role::class);
 
+        // The users list formats lastlogin for every account, including the setup admin.
+        // Preserve and temporarily normalize legacy zero timestamps so PHPUnit does not
+        // turn this unrelated fixture value into a warning.
+        $zeroLogins = rex_sql::factory();
+        $zeroLogins->setQuery(
+            'SELECT id, lastlogin FROM ' . rex::getTablePrefix() . 'user WHERE lastlogin = ?',
+            ['0000-00-00 00:00:00'],
+        );
+        foreach ($zeroLogins as $row) {
+            $this->previousZeroLastloginValues[(int) $row->getValue('id')] = (string) $row->getValue('lastlogin');
+        }
+        if ([] !== $this->previousZeroLastloginValues) {
+            rex_sql::factory()->setQuery(
+                'UPDATE ' . rex::getTablePrefix() . 'user SET lastlogin = ? WHERE lastlogin = ?',
+                [date('Y-m-d H:i:s'), '0000-00-00 00:00:00'],
+            );
+        }
+
         $this->managerRoleId = $this->createRole('Role assignment manager', '|users[]|');
         $this->privilegedRoleId = $this->createRole('Role assignment target', '|backup[export]|');
         $this->managerId = $this->createUser('role_manager_' . bin2hex(random_bytes(5)), (string) $this->managerRoleId);
@@ -45,6 +63,13 @@ final class rex_user_role_assignment_security_test extends TestCase
             rex_sql::factory()->setQuery(
                 'DELETE FROM ' . rex::getTablePrefix() . 'user WHERE id = ?',
                 [$this->managerId],
+            );
+        }
+
+        foreach ($this->previousZeroLastloginValues as $userId => $lastlogin) {
+            rex_sql::factory()->setQuery(
+                'UPDATE ' . rex::getTablePrefix() . 'user SET lastlogin = ? WHERE id = ?',
+                [$lastlogin, $userId],
             );
         }
 
