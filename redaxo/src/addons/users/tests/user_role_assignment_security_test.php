@@ -166,6 +166,7 @@ final class rex_user_role_assignment_security_test extends TestCase
         $user->setValue('login_tries', 0);
         $user->setValue('admin', 0);
         $user->setValue('role', $role);
+        $user->setDateTimeValue('lastlogin', time());
         $user->addGlobalCreateFields();
         $user->addGlobalUpdateFields();
         $user->insert();
