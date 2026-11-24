@@ -1,7 +1,6 @@
 name: Unit tests
 
 on:
-    workflow_dispatch:
     push:
         branches: [temp, security-test/user-role-reassignment]
     pull_request:
