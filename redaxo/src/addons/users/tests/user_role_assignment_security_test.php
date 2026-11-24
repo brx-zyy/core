@@ -1,6 +1,6 @@
 <?php
 
-use PHPUnit\\Framework\\TestCase;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Security probe for role assignment through the users addon page handler.
