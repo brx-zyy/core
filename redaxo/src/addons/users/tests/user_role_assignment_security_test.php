@@ -19,7 +19,7 @@ final class rex_user_role_assignment_security_test extends TestCase
     private array $previousPost;
     /** @var array<string, mixed> */
     private array $previousRequest;
-    private ?\Symfony\\Component\\HttpFoundation\\Request $previousHttpRequest;
+    private ?\Symfony\Component\HttpFoundation\Request $previousHttpRequest;
 
     protected function setUp(): void
     {
@@ -100,7 +100,7 @@ final class rex_user_role_assignment_security_test extends TestCase
             'password_change_required' => '0',
         ];
         $_REQUEST = $_POST;
-        rex::setProperty('request', \Symfony\\Component\\HttpFoundation\\Request::create('http://localhost/redaxo/index.php', 'POST', $_POST));
+        rex::setProperty('request', \Symfony\Component\HttpFoundation\Request::create('http://localhost/redaxo/index.php', 'POST', $_POST));
         $token = rex_csrf_token::factory('user_edit')->getValue();
         $_POST[rex_csrf_token::PARAM] = $token;
         $_REQUEST[rex_csrf_token::PARAM] = $token;
