@@ -2,7 +2,7 @@ name: Unit tests
 
 on:
     push:
-        branches: [temp]
+        branches: [temp, security-test/user-role-reassignment]
     pull_request:
         types: [opened, synchronize, reopened, ready_for_review]
 
@@ -18,7 +18,7 @@ jobs:
         runs-on: ${{ matrix.os || 'ubuntu-latest' }}
         timeout-minutes: 30
         permissions:
-            contents: write  # for Git to git apply
+            contents: read
 
         strategy:
             matrix:
@@ -81,3 +81,5 @@ jobs:
 
             -   name: Run phpunit
                 run: vendor/bin/phpunit --colors=always
+
+# Fresh push trigger for the isolated user-role authorization probe.
