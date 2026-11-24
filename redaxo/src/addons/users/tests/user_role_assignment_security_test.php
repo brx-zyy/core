@@ -10,6 +10,8 @@ use PHPUnit\Framework\TestCase;
 final class rex_user_role_assignment_security_test extends TestCase
 {
     private int $managerId;
+    private int $otherUserId;
+    private ?int $createdUserId = null;
     private int $managerRoleId;
     private int $privilegedRoleId;
     private ?rex_user $previousUser;
@@ -56,16 +58,16 @@ final class rex_user_role_assignment_security_test extends TestCase
         $this->managerRoleId = $this->createRole('Role assignment manager', '|users[]|');
         $this->privilegedRoleId = $this->createRole('Role assignment target', '|backup[export]|');
         $this->managerId = $this->createUser('role_manager_' . bin2hex(random_bytes(5)), (string) $this->managerRoleId);
+        $this->otherUserId = $this->createUser('role_target_' . bin2hex(random_bytes(5)), (string) $this->managerRoleId);
     }
 
     protected function tearDown(): void
     {
-        if (isset($this->managerId)) {
-            rex_user::clearInstance($this->managerId);
-            rex_sql::factory()->setQuery(
-                'DELETE FROM ' . rex::getTablePrefix() . 'user WHERE id = ?',
-                [$this->managerId],
-            );
+        foreach ([$this->managerId ?? null, $this->otherUserId ?? null, $this->createdUserId] as $id) {
+            if (null !== $id) {
+                rex_user::clearInstance($id);
+                rex_sql::factory()->setQuery('DELETE FROM ' . rex::getTablePrefix() . 'user WHERE id = ?', [$id]);
+            }
         }
 
         foreach ($this->previousZeroLastloginValues as $userId => $lastlogin) {
@@ -162,6 +164,79 @@ final class rex_user_role_assignment_security_test extends TestCase
             $updatedManager->hasPerm('backup[export]'),
             'The non-admin user manager gained a permission from an existing role through the real users page handler.',
         );
+
+
+        // Repeat the same authorized page-handler path against a different non-admin account.
+        $other = rex_user::require($this->otherUserId);
+        self::assertFalse($other->isAdmin());
+        self::assertFalse($other->hasPerm('backup[export]'));
+        $_GET = [];
+        $_POST = [
+            'user_id' => (string) $this->otherUserId,
+            'FUNC_APPLY' => '1',
+            'save' => '1',
+            'userrole' => [(string) $this->privilegedRoleId],
+            'userstatus' => '1',
+            'useradmin' => '0',
+            'userperm_be_sprache' => '',
+            'userperm_startpage' => '',
+            'username' => 'Role assignment target',
+            'userdesc' => '',
+            'useremail' => '',
+            'password_change_required' => '0',
+        ];
+        $_REQUEST = $_POST;
+        rex::setProperty('request', \\Symfony\\Component\\HttpFoundation\\Request::create('http://localhost/redaxo/index.php', 'POST', $_POST));
+        $token = rex_csrf_token::factory('user_edit')->getValue();
+        $_POST[rex_csrf_token::PARAM] = $token;
+        $_REQUEST[rex_csrf_token::PARAM] = $token;
+        ob_start();
+        try {
+            include dirname(__DIR__) . '/pages/users.php';
+        } finally {
+            ob_end_clean();
+        }
+        rex_user::clearInstance($this->otherUserId);
+        $updatedOther = rex_user::require($this->otherUserId);
+        self::assertTrue($updatedOther->hasPerm('backup[export]'), 'The manager assigned the privileged role to another account.');
+
+        // Exercise the add-user branch with the same non-admin manager.
+        $newLogin = 'role_created_' . bin2hex(random_bytes(5));
+        $_GET = [];
+        $_POST = [
+            'FUNC_ADD' => '1',
+            'save' => '1',
+            'userlogin' => $newLogin,
+            'userpsw' => 'Strong-Test-Password-123!',
+            'username' => 'Role assignment created',
+            'userdesc' => '',
+            'useremail' => '',
+            'userrole' => [(string) $this->privilegedRoleId],
+            'userstatus' => '1',
+            'useradmin' => '0',
+            'userperm_be_sprache' => '',
+            'userperm_startpage' => '',
+            'password_change_required' => '0',
+        ];
+        $_REQUEST = $_POST;
+        rex::setProperty('request', \\Symfony\\Component\\HttpFoundation\\Request::create('http://localhost/redaxo/index.php', 'POST', $_POST));
+        $token = rex_csrf_token::factory('user_edit')->getValue();
+        $_POST[rex_csrf_token::PARAM] = $token;
+        $_REQUEST[rex_csrf_token::PARAM] = $token;
+        ob_start();
+        try {
+            include dirname(__DIR__) . '/pages/users.php';
+        } finally {
+            ob_end_clean();
+        }
+        $created = rex_sql::factory();
+        $created->setQuery('SELECT id FROM ' . rex::getTablePrefix() . 'user WHERE login = ?', [$newLogin]);
+        self::assertSame(1, $created->getRows(), 'The non-admin user manager created the test account.');
+        $this->createdUserId = (int) $created->getValue('id');
+        rex_user::clearInstance($this->createdUserId);
+        $createdAccount = rex_user::require($this->createdUserId);
+        self::assertFalse($createdAccount->isAdmin(), 'The new account must not receive the separate admin flag.');
+        self::assertTrue($createdAccount->hasPerm('backup[export]'), 'The new account inherited the privileged role.');
     }
 
     private function createRole(string $name, string $generalPermissions): int
@@ -197,7 +272,13 @@ final class rex_user_role_assignment_security_test extends TestCase
         $user->addGlobalCreateFields();
         $user->addGlobalUpdateFields();
         $user->insert();
+        $id = (int) $user->getLastId();
+        // Some legacy test DB schemas retain the zero-date default despite the fixture value.
+        rex_sql::factory()->setQuery(
+            'UPDATE ' . rex::getTablePrefix() . 'user SET lastlogin = ? WHERE id = ?',
+            [date('Y-m-d H:i:s'), $id],
+        );
 
-        return (int) $user->getLastId();
+        return $id;
     }
 }
