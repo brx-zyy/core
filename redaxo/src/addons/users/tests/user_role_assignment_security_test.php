@@ -19,16 +19,16 @@ final class rex_user_role_assignment_security_test extends TestCase
 
     protected function setUp(): void
     {
+        $this->previousUser = rex::getUser();
+        $this->previousGet = $_GET;
+        $this->previousPost = $_POST;
+        $this->previousRequest = $_REQUEST;
+
         rex_user::setRoleClass(rex_user_role::class);
 
         $this->managerRoleId = $this->createRole('Role assignment manager', '|users[]|');
         $this->privilegedRoleId = $this->createRole('Role assignment target', '|backup[export]|');
         $this->managerId = $this->createUser('role_manager_' . bin2hex(random_bytes(5)), (string) $this->managerRoleId);
-
-        $this->previousUser = rex::getUser();
-        $this->previousGet = $_GET;
-        $this->previousPost = $_POST;
-        $this->previousRequest = $_REQUEST;
     }
 
     protected function tearDown(): void
@@ -91,6 +91,11 @@ final class rex_user_role_assignment_security_test extends TestCase
             rex_csrf_token::PARAM => $token,
         ];
         $_REQUEST = $_POST;
+
+        self::assertTrue(
+            rex_csrf_token::factory('user_edit')->isValid(),
+            'The simulated request must carry a valid REDAXO user-edit CSRF token.',
+        );
 
         ob_start();
         try {
